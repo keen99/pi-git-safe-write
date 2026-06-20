@@ -1,0 +1,26 @@
+{
+  "name": "pi-git-safe-write",
+  "version": "1.0.0",
+  "description": "pi extension that gates write/edit to existing untracked files in git repos",
+  "keywords": ["pi-package", "pi-extension", "git", "safety"],
+  "license": "MIT",
+  "author": "David Raistrick",
+  "homepage": "https://github.com/keen99/pi-git-safe-write",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/keen99/pi-git-safe-write.git"
+  },
+  "type": "module",
+  "main": "./index.ts",
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "echo 'nothing to build'",
+    "check": "echo 'nothing to check'"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}
