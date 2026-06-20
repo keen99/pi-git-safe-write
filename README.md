@@ -14,6 +14,7 @@ The gate is simple: **any existing file that git does not track gets a prompt.**
 |---------------------------------------------|------------|
 | Git-tracked                                 | allow      |
 | New file (doesn't exist yet)                | allow      |
+| Temp file (`/tmp`, `os.tmpdir()`, ...)      | allow      |
 | `.gitignore`-d (explicitly excluded)        | allow      |
 | **Existing + untracked, inside a repo**     | **prompt** |
 | **Existing + outside any git repo**         | **prompt** |

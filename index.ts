@@ -9,9 +9,10 @@
  *
  *   tracked file            -> allow
  *   new file (doesn't exist)-> allow (creating a new file)
+ *   temp file (/tmp etc)    -> allow (scratch, never gated)
  *   ignored file            -> allow (explicitly excluded from VCS)
- *   outside a git repo      -> allow (no VCS concern)
- *   untracked existing file -> PROMPT (this is the only gate)
+ *   untracked existing file -> PROMPT (the only gate)
+ *   outside a git repo      -> PROMPT ("not tracked" in the primary sense)
  *
  * Commands:
  *   /unsafe  Disable the untracked-file gate for the session (persists
@@ -48,6 +49,34 @@ interface BypassState {
 const APPROVED_FILES_KEY = "git-safe-write-approved";
 const BYPASS_KEY = "git-safe-write-bypass";
 
+// Temp dirs: always allow. pi (and agents in general) scribble scratch files
+// here constantly. Gating them just adds noise. Covers os.tmpdir() plus the
+// conventional Unix temp locations.
+const os = require("node:os") as typeof import("node:os");
+const pathMod = require("node:path") as typeof import("node:path");
+const TMP_DIRS: string[] = Array.from(
+	new Set(
+		[
+			os.tmpdir(),
+			"/tmp",
+			"/var/tmp",
+			"/private/tmp", // macOS symlink target of /tmp
+			"/private/var/tmp",
+		].map((p) => {
+				try {
+					return pathMod.resolve(p);
+				} catch {
+					return p;
+				}
+			}),
+	),
+);
+
+/** True if abs path lives under a known temp directory. */
+function isInTmp(abs: string): boolean {
+	return TMP_DIRS.some((dir) => abs === dir || abs.startsWith(dir + pathMod.sep));
+}
+
 /**
  * Resolve a (possibly relative) path to an absolute path. Returns undefined
  * if resolution fails.
@@ -71,6 +100,11 @@ async function checkGitStatus(filePath: string, cwd: string, pi: ExtensionAPI, s
 	const abs = resolveAbsolute(filePath, cwd);
 	if (!abs) {
 		return { tracked: false, exists: false, ignored: false, inRepo: false };
+	}
+
+	// Temp files: short-circuit as "tracked" so they're never gated.
+	if (isInTmp(abs)) {
+		return { tracked: true, exists: true, ignored: false, inRepo: false };
 	}
 
 	const fs = require("node:fs") as typeof import("node:fs");
