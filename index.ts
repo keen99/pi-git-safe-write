@@ -167,12 +167,13 @@ async function checkGitStatus(filePath: string, cwd: string, pi: ExtensionAPI, s
 	return { tracked, exists, ignored, inRepo: true };
 }
 
+import { execFileSync } from "node:child_process";
+
 /** Best-effort desktop notification that pi needs a decision. Never throws. */
 function notifyAttention(title: string, body: string): void {
 	if (process.platform === "darwin") {
 		const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 		try {
-			const { execFileSync } = require("node:child_process") as typeof import("node:child_process");
 			execFileSync(
 				"osascript",
 				["-e", `display notification "${esc(body)}" with title "${esc(title)}" sound name "Glass"`],
