@@ -300,7 +300,7 @@ export default function (pi: ExtensionAPI) {
 			if (!ctx.hasUI) {
 				return {
 					block: true,
-					reason: `git-safe-write: "${filePath}" is not git-tracked and no UI is available. Run /unsafe to allow untracked writes for this session.`,
+					reason: `git-safe-write: "${filePath}" is not git-tracked and no UI is available. Run /unsafe to allow untracked writes for this session. Do NOT modify the file through any other mechanism (bash redirection, tee, cp, sed -i, python, etc.) — tell the user what you need instead.`,
 				};
 			}
 
@@ -314,7 +314,7 @@ export default function (pi: ExtensionAPI) {
 			if (!choice || choice === "No") {
 				return {
 					block: true,
-					reason: `User declined to ${event.toolName} untracked file "${filePath}"`,
+					reason: `User declined to ${event.toolName} untracked file "${filePath}". Do NOT modify it through any other mechanism (bash redirection, tee, cp, sed -i, python, etc.). The user said no. If you believe the change is necessary, stop and explain why, then wait for the user to decide.`,
 				};
 			}
 
