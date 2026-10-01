@@ -228,7 +228,7 @@ export default function (pi: ExtensionAPI) {
 	// /unsafe — allow untracked-in-repo writes for the session (persists
 	// across /reload; resets on /new /fork because those start new sessions).
 	pi.registerCommand("unsafe", {
-		description: "Allow writes to untracked files in git repos for this session",
+		description: "safe-write: allow untracked-file writes (this session)",
 		handler: async (_args, ctx) => {
 			bypass = true;
 			saveBypass();
@@ -238,7 +238,7 @@ export default function (pi: ExtensionAPI) {
 
 	// /safe — re-enable full protection.
 	pi.registerCommand("safe", {
-		description: "Re-enable git-safe-write protection",
+		description: "safe-write: re-enable untracked-file gate",
 		handler: async (_args, ctx) => {
 			bypass = false;
 			disabled = false;
@@ -249,7 +249,7 @@ export default function (pi: ExtensionAPI) {
 
 	// /nosafe — disable the entire extension until restart (not persisted).
 	pi.registerCommand("nosafe", {
-		description: "Disable git-safe-write entirely until restart",
+		description: "safe-write: disable entire extension until restart",
 		handler: async (_args, ctx) => {
 			disabled = true;
 			ctx.ui.notify("git-safe-write: ENTIRELY DISABLED until restart. Use /safe to re-enable.", "error");
@@ -300,14 +300,14 @@ export default function (pi: ExtensionAPI) {
 			if (!ctx.hasUI) {
 				return {
 					block: true,
-					reason: `File "${filePath}" is not git-tracked and no UI is available for confirmation. Use /unsafe to bypass.`,
+					reason: `git-safe-write: "${filePath}" is not git-tracked and no UI is available. Run /unsafe to allow untracked writes for this session.`,
 				};
 			}
 
 			notifyAttention("pi needs input", `${event.toolName}: ${filePath}`);
 
 			const choice = await ctx.ui.select(
-				`File not git-tracked\n\n  ${filePath}\n\n${event.toolName === "write" ? "Write to" : "Edit"} this file?`,
+				`git-safe-write: file not git-tracked\n\n  ${filePath}\n\n${event.toolName === "write" ? "Write to" : "Edit"} it? (/unsafe = allow all untracked this session)`,
 				["Yes (this time only)", "Yes (remember for session)", "No"],
 			);
 
