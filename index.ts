@@ -197,6 +197,33 @@ export default function (pi: ExtensionAPI) {
 	let bypass = false;
 	let disabled = false;
 
+	// ── Footer status ──
+	type StatusCtx = {
+		ui: { setStatus(key: string, text: string | undefined): void; theme?: { fg(color: string, text: string): string } };
+	};
+
+	function statusText(): string {
+		if (disabled) return "🔒 safe:off";
+		if (bypass) return "🔓 safe:BYPASS";
+		return `🔒 safe:on${approvedFiles.size ? ` (${approvedFiles.size})` : ""}`;
+	}
+
+	function statusColor(): string {
+		if (disabled) return "dim";
+		if (bypass) return "warning";
+		return "dim";
+	}
+
+	function updateStatus(ctx: StatusCtx) {
+		try {
+			const theme = ctx.ui.theme;
+			const text = statusText();
+			ctx.ui.setStatus("zs-git-safe-write", theme?.fg ? theme.fg(statusColor(), text) : text);
+		} catch {
+			/* footer status is best-effort */
+		}
+	}
+
 	// Restore session-persisted state. Runs before any tool_call, so the
 	// gate reflects prior approvals/bypass as soon as the session is live.
 	pi.on("session_start", async (_event, ctx) => {
@@ -213,6 +240,7 @@ export default function (pi: ExtensionAPI) {
 				if (data?.bypassed) bypass = true;
 			}
 		}
+		updateStatus(ctx);
 	});
 
 	function saveApprovedFiles(): void {
@@ -221,8 +249,9 @@ export default function (pi: ExtensionAPI) {
 		});
 	}
 
-	function saveBypass(): void {
+	function saveBypass(ctx: StatusCtx): void {
 		pi.appendEntry<BypassState>(BYPASS_KEY, { bypassed: bypass });
+		updateStatus(ctx);
 	}
 
 	// /unsafe — allow untracked-in-repo writes for the session (persists
@@ -231,7 +260,7 @@ export default function (pi: ExtensionAPI) {
 		description: "safe-write: allow untracked-file writes (this session)",
 		handler: async (_args, ctx) => {
 			bypass = true;
-			saveBypass();
+			saveBypass(ctx);
 			ctx.ui.notify("git-safe-write: untracked-file gate DISABLED. Use /safe to re-enable.", "warning");
 		},
 	});
@@ -242,7 +271,7 @@ export default function (pi: ExtensionAPI) {
 		handler: async (_args, ctx) => {
 			bypass = false;
 			disabled = false;
-			saveBypass();
+			saveBypass(ctx);
 			ctx.ui.notify("git-safe-write: FULLY ENABLED", "info");
 		},
 	});
@@ -252,6 +281,7 @@ export default function (pi: ExtensionAPI) {
 		description: "safe-write: disable entire extension until restart",
 		handler: async (_args, ctx) => {
 			disabled = true;
+			updateStatus(ctx);
 			ctx.ui.notify("git-safe-write: ENTIRELY DISABLED until restart. Use /safe to re-enable.", "error");
 		},
 	});
@@ -321,6 +351,7 @@ export default function (pi: ExtensionAPI) {
 			if (choice === "Yes (remember for session)") {
 				approvedFiles.add(filePath);
 				saveApprovedFiles();
+				updateStatus(ctx);
 			}
 		}
 
