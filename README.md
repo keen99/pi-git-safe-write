@@ -1,5 +1,9 @@
 # pi-git-safe-write
 
+![CI](https://github.com/keen99/pi-git-safe-write/actions/workflows/ci.yml/badge.svg)
+![release-watch](https://github.com/keen99/pi-git-safe-write/actions/workflows/release-watch.yml/badge.svg)
+[![pi tested](https://img.shields.io/github/v/release/keen99/pi-git-safe-write?label=pi%20tested%200.75.0%20%E2%86%92)](https://github.com/keen99/pi-git-safe-write/releases)
+
 A [pi](https://pi.dev) extension that stops the agent from editing **existing, untracked files** in a git repo without asking. Everything else is allowed through.
 
 ## Why
@@ -60,3 +64,23 @@ Approvals and the `/unsafe` bypass are stored as custom session entries, so they
 ## License
 
 MIT
+
+## Development
+
+`npm test` runs the unit suite; `npm run test:matrix` boots every
+stable pi release (>= 0.75.0) in RPC mode and asserts the
+session_start hook fires on the real process
+(`GIT_SAFE_WRITE_DEBUG=1` marker). The gate decision matrix runs
+against real git subprocesses. Cached installs live in
+`.matrix-cache/`.
+
+Real bugs found and fixed while building the harness: git status
+lookups broke on symlinked directories (macOS /var -> /private/var) —
+the repo root from `git rev-parse` is always realized while the file
+path was not, so the relative-path strip failed and tracked files
+looked untracked, falsely gating writes. File paths are now
+realpath-normalized before the root comparison. All `require()` calls
+were replaced with static imports (they throw under native ESM),
+`isInTmp`/`resolveAbsolute`/`checkGitStatus`/`needsGate` are exported
+for tests, and an env-gated `GIT_SAFE_WRITE_DEBUG` marker records
+session_start under `PI_CODING_AGENT_DIR`.

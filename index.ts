@@ -26,8 +26,12 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { isToolCallEventType } from "@earendil-works/pi-coding-agent";
+import { execFileSync } from "node:child_process";
+import { existsSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, basename, join, resolve, isAbsolute, sep } from "node:path";
 
-interface GitStatus {
+export interface GitStatus {
 	/** True if the file is tracked by git (staged or committed). */
 	tracked: boolean;
 	/** True if the file currently exists on disk. */
@@ -52,19 +56,17 @@ const BYPASS_KEY = "git-safe-write-bypass";
 // Temp dirs: always allow. pi (and agents in general) scribble scratch files
 // here constantly. Gating them just adds noise. Covers os.tmpdir() plus the
 // conventional Unix temp locations.
-const os = require("node:os") as typeof import("node:os");
-const pathMod = require("node:path") as typeof import("node:path");
 const TMP_DIRS: string[] = Array.from(
 	new Set(
 		[
-			os.tmpdir(),
+			tmpdir(),
 			"/tmp",
 			"/var/tmp",
 			"/private/tmp", // macOS symlink target of /tmp
 			"/private/var/tmp",
 		].map((p) => {
 				try {
-					return pathMod.resolve(p);
+					return resolve(p);
 				} catch {
 					return p;
 				}
@@ -73,17 +75,16 @@ const TMP_DIRS: string[] = Array.from(
 );
 
 /** True if abs path lives under a known temp directory. */
-function isInTmp(abs: string): boolean {
-	return TMP_DIRS.some((dir) => abs === dir || abs.startsWith(dir + pathMod.sep));
+export function isInTmp(abs: string): boolean {
+	return TMP_DIRS.some((dir) => abs === dir || abs.startsWith(dir + sep));
 }
 
 /**
  * Resolve a (possibly relative) path to an absolute path. Returns undefined
  * if resolution fails.
  */
-function resolveAbsolute(rawPath: string, cwd: string): string | undefined {
+export function resolveAbsolute(rawPath: string, cwd: string): string | undefined {
 	// Defer to node:path so we don't reimplement edge cases.
-	const { resolve, isAbsolute } = require("node:path") as typeof import("node:path");
 	try {
 		return isAbsolute(rawPath) ? resolve(rawPath) : resolve(cwd, rawPath);
 	} catch {
@@ -96,8 +97,8 @@ function resolveAbsolute(rawPath: string, cwd: string): string | undefined {
  * helper script). All git calls are bounded and never throw: on any error
  * we return a permissive status so writes are never accidentally blocked.
  */
-async function checkGitStatus(filePath: string, cwd: string, pi: ExtensionAPI, signal?: AbortSignal): Promise<GitStatus> {
-	const abs = resolveAbsolute(filePath, cwd);
+export async function checkGitStatus(filePath: string, cwd: string, pi: ExtensionAPI, signal?: AbortSignal): Promise<GitStatus> {
+	let abs = resolveAbsolute(filePath, cwd);
 	if (!abs) {
 		return { tracked: false, exists: false, ignored: false, inRepo: false };
 	}
@@ -107,17 +108,26 @@ async function checkGitStatus(filePath: string, cwd: string, pi: ExtensionAPI, s
 		return { tracked: true, exists: true, ignored: false, inRepo: false };
 	}
 
-	const fs = require("node:fs") as typeof import("node:fs");
 	let exists = false;
 	try {
-		exists = fs.existsSync(abs);
+		exists = existsSync(abs);
 	} catch {
 		exists = false;
 	}
 
+	// Normalize symlinked ancestors (macOS /var -> /private/var) so the file
+	// path shares a prefix with the repo root git rev-parse returns (always
+	// realized). Without this, tracked files under symlinked dirs look
+	// untracked and get falsely gated.
+	try {
+		abs = join(dirname(realpathSync(abs)), basename(abs));
+	} catch {
+		/* keep unresolved abs — file may not exist yet */
+	}
+
 	// Find the repo root from the file's directory. If git can't find a
 	// repo, we're outside VCS entirely -> allow.
-	const dir = require("node:path").dirname(abs);
+	const dir = dirname(abs);
 	let root: string | undefined;
 	try {
 		const rootResult = await pi.exec("git", ["-C", dir, "rev-parse", "--show-toplevel"], {
@@ -167,7 +177,11 @@ async function checkGitStatus(filePath: string, cwd: string, pi: ExtensionAPI, s
 	return { tracked, exists, ignored, inRepo: true };
 }
 
-import { execFileSync } from "node:child_process";
+/** The gate: any existing file git does not track (ignored = allowed). */
+export function needsGate(status: GitStatus): boolean {
+	return status.exists && !status.tracked && !status.ignored;
+}
+
 
 /** Best-effort desktop notification that pi needs a decision. Never throws. */
 function notifyAttention(title: string, body: string): void {
@@ -241,6 +255,16 @@ export default function (pi: ExtensionAPI) {
 			}
 		}
 		updateStatus(ctx);
+		if (process.env.GIT_SAFE_WRITE_DEBUG === "1") {
+			try {
+				const { writeFileSync: wf, mkdirSync: md } = await import("node:fs");
+				const { join: j } = await import("node:path");
+				const { homedir: hd } = await import("node:os");
+				const agentDir = process.env.PI_CODING_AGENT_DIR || j(hd(), ".pi", "agent");
+				md(agentDir, { recursive: true });
+				wf(j(agentDir, "git-safe-write-loaded.json"), JSON.stringify({ loaded: true }) + "\n");
+			} catch { /* best-effort */ }
+		}
 	});
 
 	function saveApprovedFiles(): void {
